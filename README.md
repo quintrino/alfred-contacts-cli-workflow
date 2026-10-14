@@ -8,8 +8,9 @@ Type `contacts` and part of a name, number, email or organisation:
 | --- | --- |
 | `↩` | Copies the number to the clipboard |
 | `⌘↩` | Messages it with the app chosen in the workflow settings (`--signal` by default, or `--sms`, `--whatsapp`, ...) |
+| `⇧↩` | Opens a `mailto:` link to the contact's first email. Holding `⇧` shows the email in place of the subtitle |
 
-A contact with several numbers gets a row per number, so you choose which one to copy or message. A contact with no number shows its first email instead, and one with neither is listed but can't be selected.
+A contact with several numbers gets a row per number, so you choose which one to copy or message; `⇧↩` emails the contact whichever row it is on. A contact with no number shows its first email instead, and one with neither is listed but can't be selected. A contact with a number but no email shows "No email address" while `⇧` is held, and `⇧↩` does nothing.
 
 ## Install
 
@@ -42,10 +43,12 @@ contacts ──► Script Filter ──↩──► Copy to Clipboard ──► 
  (keyword)   scripts/search.sh
                     └────────⌘↩──► Run Script ──► notification
                                    scripts/message.sh
+                    └────────⇧↩──► Open URL  mailto:<email>
 ```
 
-- `scripts/search.sh` runs `contacts-cli search --format json`, which prints Script Filter JSON. Each row's `arg` is the number, and the same value is used for both actions.
+- `scripts/search.sh` runs `contacts-cli search --format json`, which prints Script Filter JSON. Each row's `arg` is the number, which Enter copies and ⌘↩ messages.
 - `scripts/message.sh` runs `contacts-cli message <flag> -- <number>`. `message` finds the contact again by that number, then opens the app. Its last line (or, on failure, the reason) is shown in a notification.
+- `⇧↩` needs no script: each row carries the contact's first email (the Script Filter's `shift` modifier), and an Open URL object opens `mailto:` with it.
 - If contacts-cli is missing, too old to know `--format json`, or errors out, the search shows a single row saying what's wrong instead of nothing.
 
 Alfred starts scripts with a bare `PATH` that leaves out Homebrew, which is why the scripts look for contacts-cli themselves.

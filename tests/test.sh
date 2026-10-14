@@ -219,8 +219,22 @@ connection_targets() { # modifiers: destination uids the Script Filter reaches w
     }' < "$PLIST"
 }
 
+openurl_uid=$(perl -0777 -ne 'print $1 if m{alfred\.workflow\.action\.openurl</string>\s*<key>uid</key>\s*<string>([^<]*)</string>}' < "$PLIST")
+missing_objects=""
+[ -n "$filter_uid" ] || missing_objects="$missing_objects script-filter"
+[ -n "$copy_uid" ] || missing_objects="$missing_objects clipboard"
+[ -n "$run_script_uid" ] || missing_objects="$missing_objects run-script"
+[ -n "$openurl_uid" ] || missing_objects="$missing_objects open-url"
+assert_eq "the plist has a Script Filter, Copy, Run Script and Open URL object" "" "$missing_objects"
+
 assert_eq "Enter (no modifier) goes to Copy to Clipboard" "$copy_uid" "$(connection_targets 0)"
 assert_eq "⌘↩ (modifier 1048576) goes to the Run Script" "$run_script_uid" "$(connection_targets 1048576)"
+
+assert_eq "⇧↩ (modifier 131072) goes to Open URL" "$openurl_uid" "$(connection_targets 131072)"
+assert_eq "Open URL builds a mailto: link from the selected email" "mailto:{query}" \
+  "$(perl -0777 -ne 'print $1 if m{<key>url</key>\s*<string>([^<]*)</string>}' < "$PLIST")"
+assert_eq "the email is not URL-encoded, so @ stays @" "yes" \
+  "$(perl -0777 -ne 'print m{<key>skipqueryencode</key>\s*<true/>} ? "yes" : "no"' < "$PLIST")"
 
 all_uids=$(perl -0777 -ne 'while (m{<key>uid</key>\s*<string>([^<]*)</string>}g) { print "$1\n" }' < "$PLIST" | sort -u)
 missing=""
