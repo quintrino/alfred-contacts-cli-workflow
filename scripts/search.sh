@@ -19,7 +19,7 @@ errfile=$(mktemp) || exit 1
 trap 'rm -f "$errfile"' EXIT
 
 # `--` keeps a query that starts with a dash from being read as a flag.
-out=$(NO_COLOR=1 "$bin" search --format alfred \
+out=$(NO_COLOR=1 "$bin" search --format json \
   --message-subtitle "Message with $flag" -- "$query" 2>"$errfile")
 status=$?
 

@@ -76,8 +76,8 @@ echo "search.sh"
 
 EXTRA=(contacts_cli_path="$FAKE" FAKE_STDOUT='{"items":[]}')
 run search.sh alice
-assert_eq "calls contacts-cli with the alfred format, default subtitle and the query" \
-  "search|--format|alfred|--message-subtitle|Message with --signal|--|alice" "$(args_logged)"
+assert_eq "calls contacts-cli with the json format, default subtitle and the query" \
+  "search|--format|json|--message-subtitle|Message with --signal|--|alice" "$(args_logged)"
 assert_eq "prints what contacts-cli printed" '{"items":[]}' "$OUT"
 assert_eq "turns colour off" "NO_COLOR=1" "$(cat "$LOG.env")"
 assert_eq "exits 0" "0" "$STATUS"
@@ -85,20 +85,20 @@ assert_eq "exits 0" "0" "$STATUS"
 EXTRA=(contacts_cli_path="$FAKE" message_flag=--sms FAKE_STDOUT='{"items":[]}')
 run search.sh alice
 assert_eq "puts the configured message flag in the command-key subtitle" \
-  "search|--format|alfred|--message-subtitle|Message with --sms|--|alice" "$(args_logged)"
+  "search|--format|json|--message-subtitle|Message with --sms|--|alice" "$(args_logged)"
 
 EXTRA=(contacts_cli_path="$FAKE" FAKE_STDOUT='{"items":[]}')
 run search.sh
 assert_eq "an empty query is passed as an empty string" \
-  "search|--format|alfred|--message-subtitle|Message with --signal|--|" "$(args_logged)"
+  "search|--format|json|--message-subtitle|Message with --signal|--|" "$(args_logged)"
 
 run search.sh --help
 assert_eq "a query that looks like a flag goes after --" \
-  "search|--format|alfred|--message-subtitle|Message with --signal|--|--help" "$(args_logged)"
+  "search|--format|json|--message-subtitle|Message with --signal|--|--help" "$(args_logged)"
 
 run search.sh "alice smith"
 assert_eq "a query with spaces stays one argument" \
-  "search|--format|alfred|--message-subtitle|Message with --signal|--|alice smith" "$(args_logged)"
+  "search|--format|json|--message-subtitle|Message with --signal|--|alice smith" "$(args_logged)"
 
 mkdir -p "$TMP/with space"
 cp "$FAKE" "$TMP/with space/contacts-cli"

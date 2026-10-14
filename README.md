@@ -44,9 +44,9 @@ contacts ──► Script Filter ──↩──► Copy to Clipboard ──► 
                                    scripts/message.sh
 ```
 
-- `scripts/search.sh` runs `contacts-cli search --format alfred`, which prints Script Filter JSON. Each row's `arg` is the number, and the same value is used for both actions.
+- `scripts/search.sh` runs `contacts-cli search --format json`, which prints Script Filter JSON. Each row's `arg` is the number, and the same value is used for both actions.
 - `scripts/message.sh` runs `contacts-cli message <flag> -- <number>`. `message` finds the contact again by that number, then opens the app. Its last line (or, on failure, the reason) is shown in a notification.
-- If contacts-cli is missing, too old to know `--format alfred`, or errors out, the search shows a single row saying what's wrong instead of nothing.
+- If contacts-cli is missing, too old to know `--format json`, or errors out, the search shows a single row saying what's wrong instead of nothing.
 
 Alfred starts scripts with a bare `PATH` that leaves out Homebrew, which is why the scripts look for contacts-cli themselves.
 
