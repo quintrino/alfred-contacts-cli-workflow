@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Test and package
+    # macOS, so the scripts run under the same bash 3.2 that Alfred uses and
+    # plutil can lint info.plist.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint info.plist
+        run: plutil -lint info.plist
+
+      - name: Test
+        run: bash tests/test.sh
+
+      - name: Package
+        run: bash scripts/build.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: workflow
+          path: dist/Contacts-CLI.alfredworkflow
+
+  release:
+    name: Publish release
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: workflow
+          path: dist
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          version=$(awk '/<key>version<\/key>/ { getline next_line; if (next_line ~ /<string>/) { gsub(/.*<string>|<\/string>.*/, "", next_line); print next_line; exit } }' info.plist)
+          tag="v${version}-build.${{ github.run_number }}"
+          gh release create "$tag" dist/Contacts-CLI.alfredworkflow \
+            --target "${{ github.sha }}" \
+            --title "$tag" \
+            --generate-notes
