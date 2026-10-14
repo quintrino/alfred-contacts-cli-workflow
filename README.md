@@ -21,7 +21,17 @@ A contact with several numbers gets a row per number, so you choose which one to
    contacts-cli import ~/Downloads/contacts.csv
    ```
 
-2. Download `Contacts-CLI.alfredworkflow` from the [latest release](https://github.com/quintrino/alfred-contacts-cli-workflow/releases/latest) and open it. Alfred adds the workflow. Workflows need Alfred's [Powerpack](https://www.alfredapp.com/powerpack/).
+2. Get `Contacts-CLI.alfredworkflow` and open it, and Alfred adds the workflow. Workflows need Alfred's [Powerpack](https://www.alfredapp.com/powerpack/).
+
+   - **Download it** from the [latest release](https://github.com/quintrino/alfred-contacts-cli-workflow/releases/latest). The file isn't stored in the repository itself: it's a zip that CI builds from `info.plist` and `scripts/` and attaches to each release.
+   - **Or build it yourself**, if there's no release yet or you've changed the scripts:
+
+     ```sh
+     git clone https://github.com/quintrino/alfred-contacts-cli-workflow
+     cd alfred-contacts-cli-workflow
+     bash scripts/build.sh      # writes dist/Contacts-CLI.alfredworkflow
+     open dist/Contacts-CLI.alfredworkflow
+     ```
 
 ## Settings
 
