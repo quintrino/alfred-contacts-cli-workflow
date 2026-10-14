@@ -46,17 +46,18 @@ contacts ──► Script Filter ──↩──► Copy to Clipboard ──► 
                     └────────⇧↩──► Open URL  mailto:<email>
 ```
 
-- `scripts/search.sh` runs `contacts-cli search --format json`, which prints Script Filter JSON. Each row's `arg` is the number, which Enter copies and ⌘↩ messages.
+- `scripts/search.sh` runs `contacts-cli search --format json`, which prints the matching contacts as a plain JSON array (`name`, `phones`, `emails`, `organization`, `notes`). Nothing about it is specific to Alfred.
+- `scripts/to_script_filter.pl` turns that array into Alfred's Script Filter rows. This is where everything Alfred-specific lives: one row per phone number, the row's `arg` (the number, which Enter copies and ⌘↩ messages), the first email under the `shift` modifier, the "Message with …" subtitle for the configured flag, and the rows for contacts with nothing to act on or for no matches. It uses only Perl and `JSON::PP`, which macOS ships, so there is nothing else to install.
 - `scripts/message.sh` runs `contacts-cli message <flag> -- <number>`. `message` finds the contact again by that number, then opens the app. Its last line (or, on failure, the reason) is shown in a notification.
-- `⇧↩` needs no script: each row carries the contact's first email (the Script Filter's `shift` modifier), and an Open URL object opens `mailto:` with it.
-- If contacts-cli is missing, too old to know `--format json`, or errors out, the search shows a single row saying what's wrong instead of nothing.
+- `⇧↩` needs no script: each row carries the contact's first email, and an Open URL object opens `mailto:` with it.
+- If contacts-cli is missing, too old to know `--format json`, errors out (for example on a corrupt contacts file), or prints something that isn't a JSON array, the search shows a single row saying what's wrong instead of nothing.
 
 Alfred starts scripts with a bare `PATH` that leaves out Homebrew, which is why the scripts look for contacts-cli themselves.
 
 ## Development
 
 ```sh
-bash tests/test.sh      # runs the scripts against a fake contacts-cli and checks info.plist
+bash tests/test.sh      # runs the scripts against a fake contacts-cli, and checks info.plist
 bash scripts/build.sh   # writes dist/Contacts-CLI.alfredworkflow (needs zip)
 ```
 

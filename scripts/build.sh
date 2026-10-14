@@ -11,6 +11,6 @@ version=$(awk '/<key>version<\/key>/ { getline next_line; if (next_line ~ /<stri
 mkdir -p dist
 out="dist/Contacts-CLI.alfredworkflow"
 rm -f "$out"
-zip -qrX "$out" info.plist scripts/lib.sh scripts/search.sh scripts/message.sh
+zip -qrX "$out" info.plist scripts/lib.sh scripts/search.sh scripts/message.sh scripts/to_script_filter.pl
 
 echo "Built $out (workflow version $version)"

@@ -36,7 +36,7 @@ assert_valid_json() { # name text
 }
 
 # Reads JSON on stdin and prints a perl expression over it, e.g. '$j->{items}[0]{title}'.
-json_get() { perl -MJSON::PP -e 'local $/; my $j = decode_json(<STDIN>); print eval $ARGV[0]' "$1"; }
+json_get() { perl -MJSON::PP -e 'binmode STDOUT, ":utf8"; local $/; my $j = decode_json(<STDIN>); print eval $ARGV[0]' "$1"; }
 
 # ── fake contacts-cli ───────────────────────────────────────────────────────
 # Records its arguments (one per line) in $FAKE_LOG and its NO_COLOR setting in
@@ -74,69 +74,146 @@ args_logged() { paste -s -d'|' "$LOG"; }
 
 echo "search.sh"
 
-EXTRA=(contacts_cli_path="$FAKE" FAKE_STDOUT='{"items":[]}')
+# What contacts-cli prints for `search --format json`: an array of contacts.
+CONTACTS='[
+  {"name":"Alice Smith","emails":["alice@acme.com","a2@acme.com"],"phones":["+61491570006","+61400000000"],"organization":"Acme Corp","notes":null},
+  {"name":"Bob Jones","emails":["bob@example.com"],"phones":[],"organization":null,"notes":null},
+  {"name":"Dave Brown","emails":[],"phones":["+61400111222"],"organization":null,"notes":null},
+  {"name":"Carol White","emails":[],"phones":[],"organization":null,"notes":null}
+]'
+
+# Reads field $2 of the row at index $1 in the Script Filter JSON in $OUT.
+row() { printf '%s' "$OUT" | json_get "\$j->{items}[$1]$2"; }
+row_count() { printf '%s' "$OUT" | json_get 'scalar @{$j->{items}}'; }
+
+EXTRA=(contacts_cli_path="$FAKE" FAKE_STDOUT="$CONTACTS")
 run search.sh alice
-assert_eq "calls contacts-cli with the json format, default subtitle and the query" \
-  "search|--format|json|--message-subtitle|Message with --signal|--|alice" "$(args_logged)"
-assert_eq "prints what contacts-cli printed" '{"items":[]}' "$OUT"
+assert_eq "asks contacts-cli for plain JSON, with no Alfred-specific flags" \
+  "search|--format|json|--|alice" "$(args_logged)"
 assert_eq "turns colour off" "NO_COLOR=1" "$(cat "$LOG.env")"
+assert_valid_json "prints valid Script Filter JSON" "$OUT"
 assert_eq "exits 0" "0" "$STATUS"
 
-EXTRA=(contacts_cli_path="$FAKE" message_flag=--sms FAKE_STDOUT='{"items":[]}')
-run search.sh alice
-assert_eq "puts the configured message flag in the command-key subtitle" \
-  "search|--format|json|--message-subtitle|Message with --sms|--|alice" "$(args_logged)"
+echo "  (converting contacts to rows)"
 
-EXTRA=(contacts_cli_path="$FAKE" FAKE_STDOUT='{"items":[]}')
+assert_eq "one row per number, plus one for an email-only contact, one for a number without email, and one with nothing" \
+  "5" "$(row_count)"
+
+assert_eq "a number row: title" "Alice Smith" "$(row 0 '{title}')"
+assert_eq "a number row: subtitle is the number and organisation" "+61491570006 · Acme Corp" "$(row 0 '{subtitle}')"
+assert_eq "a number row: arg is the number, for Enter" "+61491570006" "$(row 0 '{arg}')"
+assert_eq "a number row: is selectable" "1" "$(row 0 '{valid}')"
+assert_eq "a number row: ⌘ arg is the same number" "+61491570006" "$(row 0 '{mods}{cmd}{arg}')"
+assert_eq "a number row: ⌘ subtitle names the message flag" "Message with --signal" "$(row 0 '{mods}{cmd}{subtitle}')"
+assert_eq "a number row: shift arg is the first email" "alice@acme.com" "$(row 0 '{mods}{shift}{arg}')"
+assert_eq "a number row: shift subtitle shows the email" "alice@acme.com" "$(row 0 '{mods}{shift}{subtitle}')"
+assert_eq "a number row: copy text is the number" "+61491570006" "$(row 0 '{text}{copy}')"
+assert_eq "the second number is its own row" "+61400000000" "$(row 1 '{arg}')"
+assert_eq "the second number's shift is still the contact's email" "alice@acme.com" "$(row 1 '{mods}{shift}{arg}')"
+
+assert_eq "an email-only contact: arg is the email" "bob@example.com" "$(row 2 '{arg}')"
+assert_eq "an email-only contact: shift is the same email" "bob@example.com" "$(row 2 '{mods}{shift}{arg}')"
+
+assert_eq "no email: shift is disabled" "0" "$(row 3 '{mods}{shift}{valid}')"
+assert_eq "no email: shift says why" "No email address" "$(row 3 '{mods}{shift}{subtitle}')"
+assert_eq "no email: the number still works" "+61400111222" "$(row 3 '{arg}')"
+
+assert_eq "no number or email: still listed" "Carol White" "$(row 4 '{title}')"
+assert_eq "no number or email: cannot be selected" "0" "$(row 4 '{valid}')"
+assert_eq "no number or email: no arg" "" "$(row 4 '{arg}')"
+
+EXTRA=(contacts_cli_path="$FAKE" message_flag=--sms FAKE_STDOUT="$CONTACTS")
+run search.sh alice
+assert_eq "the configured message flag is named in the ⌘ subtitle" "Message with --sms" "$(row 0 '{mods}{cmd}{subtitle}')"
+assert_eq "the configured flag is not passed to contacts-cli search" "search|--format|json|--|alice" "$(args_logged)"
+
+EXTRA=(contacts_cli_path="$FAKE" FAKE_STDOUT="[]")
+run search.sh zzz
+assert_eq "no matches: one row" "1" "$(row_count)"
+assert_eq "no matches: says so, with the query" "No contacts matching 'zzz'" "$(row 0 '{title}')"
+assert_contains "no matches: points at import" "$(row 0 '{subtitle}')" "contacts-cli import"
+assert_eq "no matches: cannot be selected" "0" "$(row 0 '{valid}')"
+
+EXTRA=(contacts_cli_path="$FAKE" FAKE_STDOUT='[{"name":"Zoë Müller","emails":[],"phones":["+61400111222"],"organization":"Café","notes":null}]')
+run search.sh "zoë"
+assert_eq "accented names survive" "Zoë Müller" "$(row 0 '{title}')"
+
+EXTRA=(contacts_cli_path="$FAKE" FAKE_STDOUT="[]")
+run search.sh "é"
+assert_eq "a non-ASCII query is not double-encoded" "No contacts matching 'é'" "$(row 0 '{title}')"
+
+EXTRA=(contacts_cli_path="$FAKE" FAKE_STDOUT='[{"name":"Al \"Quote\" Smith\\","emails":[],"phones":["+61400111222"],"organization":null,"notes":null}]')
+run search.sh al
+assert_valid_json "quotes and backslashes in a name keep the JSON valid" "$OUT"
+
+EXTRA=(contacts_cli_path="$FAKE" FAKE_STDOUT='[{"name":"Alice","emails":null,"phones":null,"organization":null,"notes":null}]')
+run search.sh alice
+assert_eq "null phones and emails are treated as none" "0" "$(row 0 '{valid}')"
+
+echo "  (running contacts-cli)"
+
+EXTRA=(contacts_cli_path="$FAKE" FAKE_STDOUT="[]")
 run search.sh
-assert_eq "an empty query is passed as an empty string" \
-  "search|--format|json|--message-subtitle|Message with --signal|--|" "$(args_logged)"
+assert_eq "an empty query is passed as an empty string" "search|--format|json|--|" "$(args_logged)"
 
 run search.sh --help
-assert_eq "a query that looks like a flag goes after --" \
-  "search|--format|json|--message-subtitle|Message with --signal|--|--help" "$(args_logged)"
+assert_eq "a query that looks like a flag goes after --" "search|--format|json|--|--help" "$(args_logged)"
 
 run search.sh "alice smith"
-assert_eq "a query with spaces stays one argument" \
-  "search|--format|json|--message-subtitle|Message with --signal|--|alice smith" "$(args_logged)"
+assert_eq "a query with spaces stays one argument" "search|--format|json|--|alice smith" "$(args_logged)"
 
 mkdir -p "$TMP/with space"
 cp "$FAKE" "$TMP/with space/contacts-cli"
-EXTRA=(contacts_cli_path="$TMP/with space/contacts-cli" FAKE_STDOUT='{"items":[]}')
+EXTRA=(contacts_cli_path="$TMP/with space/contacts-cli" FAKE_STDOUT="$CONTACTS")
 run search.sh alice
-assert_eq "works when the configured path contains a space" '{"items":[]}' "$OUT"
+assert_eq "works when the configured path contains a space" "5" "$(row_count)"
 
-EXTRA=(CONTACTS_CLI_SEARCH_PATH="$FAKE_DIR" FAKE_STDOUT='{"items":[]}')
+EXTRA=(CONTACTS_CLI_SEARCH_PATH="$FAKE_DIR" FAKE_STDOUT="$CONTACTS")
 run search.sh alice
-assert_eq "finds contacts-cli in the Homebrew search path when no path is set" '{"items":[]}' "$OUT"
+assert_eq "finds contacts-cli in the Homebrew search path when no path is set" "5" "$(row_count)"
 
-EXTRA=(FAKE_STDOUT='{"items":[]}')
+echo "  (when something goes wrong)"
+
+EXTRA=(FAKE_STDOUT="$CONTACTS")
 run search.sh alice
 assert_valid_json "not installed: prints valid Script Filter JSON" "$OUT"
-assert_eq "not installed: title" "contacts-cli not found" "$(printf '%s' "$OUT" | json_get '$j->{items}[0]{title}')"
-assert_contains "not installed: subtitle says how to install" \
-  "$(printf '%s' "$OUT" | json_get '$j->{items}[0]{subtitle}')" "brew install quintrino/tap/contacts-cli"
-assert_eq "not installed: the row cannot be selected" "0" "$(printf '%s' "$OUT" | json_get '$j->{items}[0]{valid}')"
+assert_eq "not installed: title" "contacts-cli not found" "$(row 0 '{title}')"
+assert_contains "not installed: subtitle says how to install" "$(row 0 '{subtitle}')" "brew install quintrino/tap/contacts-cli"
+assert_eq "not installed: the row cannot be selected" "0" "$(row 0 '{valid}')"
 assert_eq "not installed: exits 0" "0" "$STATUS"
 
 EXTRA=(contacts_cli_path="$TMP/nope")
 run search.sh alice
 assert_valid_json "bad path setting: prints valid JSON" "$OUT"
-assert_eq "bad path setting: names the path" "No executable at $TMP/nope" \
-  "$(printf '%s' "$OUT" | json_get '$j->{items}[0]{subtitle}')"
+assert_eq "bad path setting: names the path" "No executable at $TMP/nope" "$(row 0 '{subtitle}')"
 
 EXTRA=(contacts_cli_path="$FAKE" FAKE_EXIT=2 FAKE_STDERR="error: unexpected argument \"--format\" found")
 run search.sh alice
-assert_valid_json "failing contacts-cli: prints valid JSON even with quotes in the error" "$OUT"
-assert_eq "failing contacts-cli: title" "contacts-cli failed" "$(printf '%s' "$OUT" | json_get '$j->{items}[0]{title}')"
-assert_contains "failing contacts-cli: shows the error" \
-  "$(printf '%s' "$OUT" | json_get '$j->{items}[0]{subtitle}')" 'unexpected argument "--format" found'
-assert_eq "failing contacts-cli: exits 0 so Alfred shows the row" "0" "$STATUS"
+assert_valid_json "old contacts-cli: prints valid JSON even with quotes in the error" "$OUT"
+assert_eq "old contacts-cli: title" "contacts-cli failed" "$(row 0 '{title}')"
+assert_contains "old contacts-cli: shows the error" "$(row 0 '{subtitle}')" 'unexpected argument "--format" found'
+assert_contains "old contacts-cli: suggests upgrading" "$(row 0 '{subtitle}')" "brew upgrade contacts-cli"
+assert_eq "old contacts-cli: exits 0 so Alfred shows the row" "0" "$STATUS"
+
+EXTRA=(contacts_cli_path="$FAKE" FAKE_EXIT=1 FAKE_STDERR="Error: Cannot parse contacts file")
+run search.sh alice
+assert_eq "a contacts-cli error is shown as the row's subtitle" "Error: Cannot parse contacts file" "$(row 0 '{subtitle}')"
+assert_eq "an unrelated error does not suggest upgrading" "no" \
+  "$(case "$(row 0 '{subtitle}')" in *upgrade*) echo yes ;; *) echo no ;; esac)"
 
 EXTRA=(contacts_cli_path="$FAKE" FAKE_STDOUT="")
 run search.sh alice
-assert_eq "no output at all: also shows a failure row" "contacts-cli failed" \
-  "$(printf '%s' "$OUT" | json_get '$j->{items}[0]{title}')"
+assert_eq "no output at all: shows a failure row" "contacts-cli failed" "$(row 0 '{title}')"
+
+EXTRA=(contacts_cli_path="$FAKE" FAKE_STDOUT="this is not json")
+run search.sh alice
+assert_valid_json "output that is not JSON: still prints valid JSON" "$OUT"
+assert_eq "output that is not JSON: says so" "contacts-cli returned something unexpected" "$(row 0 '{title}')"
+assert_eq "output that is not JSON: exits 0" "0" "$STATUS"
+
+EXTRA=(contacts_cli_path="$FAKE" FAKE_STDOUT='{"items":[]}')
+run search.sh alice
+assert_eq "JSON that is not an array of contacts: says so" "contacts-cli returned something unexpected" "$(row 0 '{title}')"
 
 echo "message.sh"
 
@@ -271,7 +348,7 @@ if command -v zip >/dev/null 2>&1 && command -v unzip >/dev/null 2>&1; then
   (cd "$TMP/repo" && bash scripts/build.sh >/dev/null 2>&1)
   listing=$(unzip -Z1 "$TMP/repo/dist/Contacts-CLI.alfredworkflow" 2>/dev/null | sort | tr '\n' ' ')
   assert_eq "the package holds info.plist and the scripts, and nothing else" \
-    "info.plist scripts/lib.sh scripts/message.sh scripts/search.sh " "$listing"
+    "info.plist scripts/lib.sh scripts/message.sh scripts/search.sh scripts/to_script_filter.pl " "$listing"
 else
   echo "  skip build (zip/unzip not available)"
 fi
