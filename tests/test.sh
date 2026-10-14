@@ -27,6 +27,13 @@ assert_contains() { # name haystack needle
   esac
 }
 
+assert_not_contains() { # name haystack needle
+  case "$2" in
+    *"$3"*) bad "$1" "expected not to contain: $3" "actual: $2" ;;
+    *) ok "$1" ;;
+  esac
+}
+
 assert_valid_json() { # name text
   if printf '%s' "$2" | perl -MJSON::PP -e 'local $/; decode_json(<STDIN>)' 2>/dev/null; then
     ok "$1"
@@ -65,7 +72,7 @@ run() { # script args...
   shift
   rm -f "$LOG" "$LOG.env"
   OUT=$(env -i PATH="/usr/bin:/bin" HOME="$TMP" FAKE_LOG="$LOG" \
-    CONTACTS_CLI_SEARCH_PATH="$TMP/nothing-here" TESTING=1 "${EXTRA[@]}" \
+    CONTACTS_CLI_SEARCH_PATH="$TMP/nothing-here" TESTING=1 ${EXTRA[@]+"${EXTRA[@]}"} \
     bash "$ROOT/scripts/$script" "$@" 2>/dev/null)
   STATUS=$?
 }
@@ -198,8 +205,7 @@ assert_eq "old contacts-cli: exits 0 so Alfred shows the row" "0" "$STATUS"
 EXTRA=(contacts_cli_path="$FAKE" FAKE_EXIT=1 FAKE_STDERR="Error: Cannot parse contacts file")
 run search.sh alice
 assert_eq "a contacts-cli error is shown as the row's subtitle" "Error: Cannot parse contacts file" "$(row 0 '{subtitle}')"
-assert_eq "an unrelated error does not suggest upgrading" "no" \
-  "$(case "$(row 0 '{subtitle}')" in *upgrade*) echo yes ;; *) echo no ;; esac)"
+assert_not_contains "an unrelated error does not suggest upgrading" "$(row 0 '{subtitle}')" "upgrade"
 
 EXTRA=(contacts_cli_path="$FAKE" FAKE_STDOUT="")
 run search.sh alice
